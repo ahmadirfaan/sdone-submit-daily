@@ -2,24 +2,16 @@ package com.sdone.submitdailyptw.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sdone.submitdailyptw.entity.ApprovalData;
 import com.sdone.submitdailyptw.entity.PtwData;
 import com.sdone.submitdailyptw.entity.WizardEnum;
 import com.sdone.submitdailyptw.entity.WizardStatusEnum;
-import com.sdone.submitdailyptw.entity.wizard6.WizardEnam;
-import com.sdone.submitdailyptw.entity.wizard7.WizardTujuh;
-import com.sdone.submitdailyptw.entity.wizard8.WizardDelapan;
 import com.sdone.submitdailyptw.exception.BadRequestException;
 import com.sdone.submitdailyptw.grpc.client.Ptw130Client;
 import com.sdone.submitdailyptw.grpc.client.TokenValidatorServiceClient;
-import com.sdone.submitdailyptw.model.CreateDailyPtw;
 import com.sdone.submitdailyptw.model.FieldConstant;
+import com.sdone.submitdailyptw.model.SubmitDailyPtw;
 import com.sdone.submitdailyptw.repository.ApprovalDataRepository;
 import com.sdone.submitdailyptw.repository.PtwDataRepository;
-import net.sumdev.projectone.database.ptw130.Enum130;
-import net.sumdev.projectone.database.ptw130.Ptw130Wizard6;
-import net.sumdev.projectone.database.ptw130.Ptw130Wizard7;
-import net.sumdev.projectone.database.ptw130.Ptw130Wizard8;
 import net.sumdev.projectone.database.user.UserOuterClass.UserWithRoles;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,19 +21,22 @@ import org.springframework.stereotype.Service;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static net.sumdev.projectone.database.ptw130.Ptw130.CreateDailyRequest;
-import static net.sumdev.projectone.database.ptw130.Ptw130.DataDaily;
+import static net.sumdev.projectone.database.ptw130.Enum130.WizardNo;
+import static net.sumdev.projectone.database.ptw130.Enum130.WizardStatus;
+import static net.sumdev.projectone.database.ptw130.Ptw130.SubmitDaily;
+import static net.sumdev.projectone.database.ptw130.Ptw130.SubmitDailyRequest;
 import static net.sumdev.projectone.database.user.UserOuterClass.Role;
 import static net.sumdev.projectone.security.TokenValidator.ValidateResponse.Status;
 
 @Service
 public class PtwService {
 
-    @Value("${com.sdone.createdailyPtw.isTestMode}")
+    @Value("${com.sdone.submitdailyPtw.isTestMode}")
     private boolean testMode;
 
     @Autowired
@@ -59,11 +54,18 @@ public class PtwService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
 
-    public Map<String, Object> createDailyPtw(CreateDailyPtw request) {
+    public Map<String, Object> submitDailyPtw(SubmitDailyPtw request) {
 
         var result = new HashMap<String, Object>();
 
-        LocalDate localDate = validateTanggalDaily(request.getTanggalDaily());
+        var localDate = validateTanggalDaily(request.getTanggalDaily());
+
+        var statusSubmitted = List.of(WizardStatusEnum.DONE, WizardStatusEnum.COMPLETE);
+        boolean canSubmitted = request.getWizardNo() == WizardEnum.WIZARD_9 &&
+                statusSubmitted.contains(request.getWizardStatus());
+        if (!canSubmitted) {
+            throw new BadRequestException("Must be wizard 9");
+        }
 
         var validateToken = tokenValidatorServiceClient.validateToken(request.getToken());
         if (validateToken.getStatus() != Status.VALID) {
@@ -79,46 +81,34 @@ public class PtwService {
 
         if (testMode) {
 
-            var approvalData = approvalDataRepository.findByUuid(request.getUuid());
-            checkApprovalData(approvalData);
-            var isError = true;
-            List<WizardEnum> wizardEnumList = List.of(WizardEnum.WIZARD_6, WizardEnum.WIZARD_7);
-            if (request.getWizardStatus() == WizardStatusEnum.DRAFT && request.getWizardNo() == WizardEnum.WIZARD_6) {
-                isError = false;
-            }
+            checkEligibleSubmit(request.getUuid(), localDate);
 
-            if (request.getWizardStatus() == WizardStatusEnum.SUBMIT && request.getWizardNo() ==  WizardEnum.WIZARD_7) {
-                isError = false;
-                var wizard = ptwDataRepository.findByUuidAndAndWizardAndLocalDate(request.getUuid(), WizardEnum.WIZARD_6, localDate);
-                if (wizard.isEmpty()) {
-                    throw new BadRequestException(WizardEnum.WIZARD_6 + " is not exist");
-                }
+            if (request.getWizardStatus() == WizardStatusEnum.DONE) {
+                ptwDataRepository.findByUuid(request.getUuid()).forEach(d -> {
+                    d.setStatus(WizardStatusEnum.DONE);
+                    ptwDataRepository.save(d);
+                });
 
-                wizard.forEach(ptwData -> {
-                    ptwData.setStatus(WizardStatusEnum.SUBMIT);
-                    ptwDataRepository.save(ptwData);
+                approvalDataRepository.findByUuid(request.getUuid()).forEach(d -> {
+                    d.setStatus(WizardStatusEnum.DONE.name());
+                    approvalDataRepository.save(d);
+                });
+            } else if (request.getWizardStatus() == WizardStatusEnum.COMPLETE) {
+                ptwDataRepository.findByUuidAndAndWizardAndLocalDate(request.getUuid(), WizardEnum.WIZARD_6, localDate).forEach(d -> {
+                    d.setStatus(WizardStatusEnum.COMPLETE);
+                    ptwDataRepository.save(d);
+                });
+                ptwDataRepository.findByUuidAndAndWizardAndLocalDate(request.getUuid(), WizardEnum.WIZARD_7, localDate).forEach(d -> {
+                    d.setStatus(WizardStatusEnum.COMPLETE);
+                    ptwDataRepository.save(d);
+                });
+                ptwDataRepository.findByUuidAndAndWizardAndLocalDate(request.getUuid(), WizardEnum.WIZARD_8, localDate).forEach(d -> {
+                    d.setStatus(WizardStatusEnum.COMPLETE);
+                    ptwDataRepository.save(d);
                 });
             }
 
-            if ((request.getWizardStatus() == WizardStatusEnum.APPROVE || request.getWizardStatus() == WizardStatusEnum.DECLINE)
-                    && request.getWizardNo() ==  WizardEnum.WIZARD_8) {
-                isError = false;
-                wizardEnumList.forEach(wizardEnum -> {
-                    var wizard = ptwDataRepository.findByUuidAndAndWizardAndLocalDate(request.getUuid(), wizardEnum, localDate);
-                    if (wizard.isEmpty()) {
-                        throw new BadRequestException(wizardEnum.name() + " is not exist");
-                    }
 
-                    wizard.forEach(ptwData -> {
-                        ptwData.setStatus(request.getWizardStatus());
-                        ptwDataRepository.save(ptwData);
-                    });
-                });
-            }
-
-            if (isError) {
-                throw new BadRequestException("Not valid wizardNo and wizardStatus");
-            }
 
             try {
                 populateDbH2(request, validateToken.getUserWithRoles(), localDate);
@@ -130,12 +120,10 @@ public class PtwService {
             result.put(FieldConstant.RESULT, "success put to DB");
             result.put("uuid", request.getUuid());
         } else {
+            var wizardStatus = WizardStatus.forNumber(request.getWizardStatus().ordinal());
             try {
-                var createDailyRequest = createRequest(request, validateToken.getUserWithRoles());
-                if (createDailyRequest == null) {
-                    throw new BadRequestException("Invalid WizardNo");
-                }
-                var dailyPtw = ptw130Client.createDailyPtw(createDailyRequest);
+                var createDailyRequest = createRequest(request, validateToken.getUserWithRoles(), wizardStatus);
+                var dailyPtw = ptw130Client.submitDailyPtw(createDailyRequest);
                 result.put(FieldConstant.HTTP_STATUS, HttpStatus.OK.value());
                 result.put(FieldConstant.RESULT, dailyPtw.getResult());
                 result.put("uuid", dailyPtw.getUuid());
@@ -147,7 +135,7 @@ public class PtwService {
     }
 
     private LocalDate validateTanggalDaily(String tanggalDaily) {
-        if(tanggalDaily.length() != 8) {
+        if (tanggalDaily.length() != 8) {
             throw new BadRequestException("tanggal daily request is not date format");
         }
 
@@ -161,7 +149,7 @@ public class PtwService {
         }
     }
 
-    private void populateDbH2(CreateDailyPtw request, UserWithRoles userWithRoles, LocalDate date) throws JsonProcessingException {
+    private void populateDbH2(SubmitDailyPtw request, UserWithRoles userWithRoles, LocalDate date) throws JsonProcessingException {
         PtwData ptwData = new PtwData();
         long epochSecond = Instant.now().getEpochSecond();
         ptwData.setTimestamp(epochSecond);
@@ -170,106 +158,24 @@ public class PtwService {
         ptwData.setUuid(request.getUuid());
         ptwData.setLocalDate(date);
         ptwData.setUsername(userWithRoles.getUsername());
-        switch (request.getWizardNo()) {
-            case WIZARD_6:
-                var wizardEnam = objectMapper.readValue(request.getDataDaily().toString(), WizardEnam.class);
-                var wizardEnamData = objectMapper.writeValueAsString(wizardEnam);
-                ptwData.setData(wizardEnamData);
-                break;
-            case WIZARD_7:
-                var wizardTujuh = objectMapper.readValue(request.getDataDaily().toString(), WizardTujuh.class);
-                var wizardTujuhData = objectMapper.writeValueAsString(wizardTujuh);
-                ptwData.setData(wizardTujuhData);
-                break;
-            case WIZARD_8:
-                var wizardDelapan = objectMapper.readValue(request.getDataDaily().toString(), WizardDelapan.class);
-                var wizardDelapanData = objectMapper.writeValueAsString(wizardDelapan);
-                ptwData.setData(wizardDelapanData);
-                break;
-            default:
-                throw new BadRequestException("Invalid data PTW");
-        }
-
+        ptwData.setData(request.getSubmitDaily().toString());
         ptwDataRepository.save(ptwData);
     }
 
-    private CreateDailyRequest createRequest(CreateDailyPtw request, UserWithRoles userWithRoles) throws JsonProcessingException {
+    private SubmitDailyRequest createRequest(SubmitDailyPtw request, UserWithRoles userWithRoles, WizardStatus wizardStatus) throws JsonProcessingException {
         long epochSecond = Instant.now().getEpochSecond();
         String uuid = request.getUuid();
         String username = userWithRoles.getUsername();
-        var jsonNode = request.getDataDaily();
-        switch (request.getWizardNo()) {
-            case WIZARD_6:
-                WizardEnam wizardEnam = objectMapper.readValue(jsonNode.toString(), WizardEnam.class);
-                return CreateDailyRequest
-                        .newBuilder()
-                        .setTimestamp(epochSecond)
-                        .setUuid(uuid)
-                        .setUsername(username)
-                        .setWizardNo(Enum130.WizardNo.WIZARD_6)
-                        .setDataDaily(DataDaily.newBuilder()
-                                .setWizardEnam(Ptw130Wizard6.DataPtwWizardEnam.newBuilder()
-                                        .setTimestamp(epochSecond)
-                                        .setUsername(username)
-                                        .setUuid(uuid)
-                                        .setImplementasi(Ptw130Wizard6.Implementasi.newBuilder()
-                                                .setTanggalPtw(wizardEnam.getImplementasi().getTanggalPtw())
-                                                .setTitikAksesLokasi(wizardEnam.getImplementasi().getTitikAksesLokasi())
-                                                .setJumlahPekerja(wizardEnam.getImplementasi().getJumlahPekerja())
-                                                .addAllFotoPekerjaan(wizardEnam.getImplementasi().getFotoPekerjaan())
-                                                .build())
-                                        .build())
-                                .build())
-                        .build();
-            case WIZARD_7:
-                var wizardTujuh = objectMapper.readValue(jsonNode.toString(), WizardTujuh.class);
-                return CreateDailyRequest
-                        .newBuilder()
-                        .setTimestamp(epochSecond)
-                        .setUuid(uuid)
-                        .setUsername(username)
-                        .setWizardNo(Enum130.WizardNo.WIZARD_7)
-                        .setDataDaily(DataDaily.newBuilder()
-                                .setWizardTujuh(Ptw130Wizard7.DataPtwWizardTujuh.newBuilder()
-                                        .setTimestamp(epochSecond)
-                                        .setUsername(username)
-                                        .setUuid(uuid)
-                                        .setSafety(Ptw130Wizard7.WorksiteSafety.newBuilder()
-                                                .setSortCircuit(wizardTujuh.getSafety().getSortCircuit())
-                                                .setMarkerBoards(wizardTujuh.getSafety().getMarkerBoards())
-                                                .setEquipmentIsolation(wizardTujuh.getSafety().getEquipmentIsolation())
-                                                .setPengaturanKomunikasi(wizardTujuh.getSafety().getPengaturanKomunikasi())
-                                                .setTitikKeluarDarurat(wizardTujuh.getSafety().getTitikKeluarDarurat())
-                                                .build())
-                                        .build())
-                                .build())
-                        .build();
-            case WIZARD_8:
-                var wizardDelapan = objectMapper.readValue(jsonNode.toString(), WizardDelapan.class);
-                return CreateDailyRequest
-                        .newBuilder()
-                        .setTimestamp(epochSecond)
-                        .setUuid(uuid)
-                        .setUsername(username)
-                        .setWizardNo(Enum130.WizardNo.WIZARD_8)
-                        .setDataDaily(DataDaily.newBuilder()
-                                .setWizardDelapan(Ptw130Wizard8.DataPtwWizardDelapan.newBuilder()
-                                        .setTimestamp(epochSecond)
-                                        .setUsername(username)
-                                        .setUuid(uuid)
-                                        .setOtorisasi(Ptw130Wizard8.Otorisasi.newBuilder()
-                                                .setOccLineOperator(wizardDelapan.getOtorisasi().getOccLineOperator())
-                                                .setOccUsername(wizardDelapan.getOtorisasi().getOccUsername())
-                                                .setAksesDiberikan(wizardDelapan.getOtorisasi().getAksesDiberikan())
-                                                .setAlasanTolak(wizardDelapan.getOtorisasi().getAlasanTolak())
-                                                .addAllStasiunOperator(wizardDelapan.getOtorisasi().getStasiunOperator())
-                                                .build())
-                                        .build())
-                                .build())
-                        .build();
-            default:
-                return null;
-        }
+        var jsonNode = request.getSubmitDaily();
+        return SubmitDailyRequest.newBuilder()
+                .setUsername(username)
+                .setTimestamp(epochSecond)
+                .setUuid(uuid)
+                .setWizardNo(WizardNo.WIZARD_9)
+                .setWizardStatus(wizardStatus)
+                .setSubmitDaily(SubmitDaily.newBuilder()
+                        .build())
+                .build();
     }
 
 
@@ -300,18 +206,24 @@ public class PtwService {
         return isAllowedRole && isAllowedPermission;
     }
 
-    private void checkApprovalData(List<ApprovalData> approvalData) {
-        var approvalDataVp = approvalData.stream().filter(data -> data.getStatus().equalsIgnoreCase(WizardStatusEnum.APPROVE.toString())
-                && data.getRole().equalsIgnoreCase("VP")).findAny();
-        var approvalDataJm = approvalData.stream().filter(data -> data.getStatus().equalsIgnoreCase(WizardStatusEnum.APPROVE.toString())
-                && data.getRole().equalsIgnoreCase("JM")).findAny();
-        var approvalDataShe = approvalData.stream().filter(data -> data.getStatus().equalsIgnoreCase(WizardStatusEnum.APPROVE.toString())
-                && data.getRole().equalsIgnoreCase("SHE")).findAny();
+    private void checkEligibleSubmit(String uuid, LocalDate date) {
+        var result = new ArrayList<PtwData>();
+        var wizardSix = ptwDataRepository.findByUuidAndAndWizardAndLocalDate(uuid, WizardEnum.WIZARD_6, date);
+        result.addAll(wizardSix);
+        var wizardSeven = ptwDataRepository.findByUuidAndAndWizardAndLocalDate(uuid, WizardEnum.WIZARD_7, date);
+        result.addAll(wizardSeven);
 
-        if (approvalDataVp.isEmpty() || approvalDataJm.isEmpty() || approvalDataShe.isEmpty()) {
+        var wizardEight = ptwDataRepository.findByUuidAndAndWizardAndLocalDate(uuid, WizardEnum.WIZARD_8, date);
+        result.addAll(wizardEight);
 
-            throw new BadRequestException("Approval is not exist ");
-        }
+        result.forEach(data -> {
+            var statusApproved = data.getStatus() != WizardStatusEnum.APPROVE;
+            if (statusApproved) {
+                throw new BadRequestException(
+                        String.format("Data is not approved, uuid: %s, wizardNo : %s, wizardStatus: %s", data.getUuid(),
+                                data.getWizard(), data.getStatus()));
+            }
+        });
     }
 }
 

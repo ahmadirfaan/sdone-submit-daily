@@ -1,6 +1,6 @@
 package com.sdone.submitdailyptw.controller;
 
-import com.sdone.submitdailyptw.model.CreateDailyPtw;
+import com.sdone.submitdailyptw.model.SubmitDailyPtw;
 import com.sdone.submitdailyptw.model.FieldConstant;
 import com.sdone.submitdailyptw.service.PtwService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,9 +20,9 @@ public class PtwController {
     @Autowired
     private PtwService ptwService;
 
-    @PostMapping("/v1/ptw/daily/create")
-    public ResponseEntity<Map<String, Object>> getPtwList(@RequestBody @Valid CreateDailyPtw createDailyPtw) {
-        var result = ptwService.createDailyPtw(createDailyPtw);
+    @PostMapping("/v1/ptw/daily/submit")
+    public ResponseEntity<Map<String, Object>> submitDailyPtw(@RequestBody @Valid SubmitDailyPtw createDailyPtw) {
+        var result = ptwService.submitDailyPtw(createDailyPtw);
         var httpStatus = (Integer) result.get(FieldConstant.HTTP_STATUS);
         result.remove(FieldConstant.HTTP_STATUS);
         return ResponseEntity.status(httpStatus).body(result);

@@ -7,10 +7,10 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.client.inject.GrpcClient;
-import net.sumdev.projectone.database.ptw130.Ptw130.CreateDailyRequest;
 import net.sumdev.projectone.database.ptw130.Ptw130DBServiceGrpc;
 import org.springframework.stereotype.Component;
 
+import static net.sumdev.projectone.database.ptw130.Ptw130.*;
 import static net.sumdev.projectone.database.ptw130.Ptw130.Response;
 
 @Component
@@ -23,10 +23,10 @@ public class Ptw130Client {
     @GrpcClient("createDailyPtw-service")
     private Ptw130DBServiceGrpc.Ptw130DBServiceBlockingStub ptw130DBServiceBlockingStub;
 
-    public Response createDailyPtw(CreateDailyRequest createDailyRequest) {
-        log.info("{} request : {} ", Ptw130DBServiceGrpc.SERVICE_NAME, createDailyRequest);
+    public Response submitDailyPtw(SubmitDailyRequest submitDaily) {
+        log.info("{} request : {} ", Ptw130DBServiceGrpc.SERVICE_NAME, submitDaily);
         try {
-        return ptw130DBServiceBlockingStub.createDaily(createDailyRequest);
+        return ptw130DBServiceBlockingStub.submitDaily(submitDaily);
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(Status.Code.PERMISSION_DENIED)) {
                 //means not authorized from token validator service

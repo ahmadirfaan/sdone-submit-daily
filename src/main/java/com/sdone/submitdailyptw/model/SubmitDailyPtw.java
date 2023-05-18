@@ -9,7 +9,7 @@ import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 
 @Data
-public class CreateDailyPtw {
+public class SubmitDailyPtw {
 
 
     @NotBlank(message = "token can't be blank")
@@ -24,7 +24,7 @@ public class CreateDailyPtw {
     private String uuid;
 
     @NotNull(message = "dataDaily can't null")
-    private JsonNode dataDaily;
+    private JsonNode submitDaily;
 
     @NotBlank(message = "tanggalDaily can't be blank")
     private String tanggalDaily;

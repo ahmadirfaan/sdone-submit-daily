@@ -13,4 +13,6 @@ public interface PtwDataRepository extends JpaRepository<PtwData, String> {
 
     List<PtwData> findByUuidAndAndWizardAndLocalDate(String uuid, WizardEnum wizardEnum, LocalDate localDate);
 
+    List<PtwData> findByUuid(String uuid);
+
 }

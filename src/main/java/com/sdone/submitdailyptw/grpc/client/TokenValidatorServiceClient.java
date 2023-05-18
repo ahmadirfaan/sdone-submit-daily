@@ -7,11 +7,13 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.client.inject.GrpcClient;
+import net.sumdev.projectone.database.user.UserOuterClass;
 import net.sumdev.projectone.security.TokenValidatorServiceGrpc;
 import org.springframework.stereotype.Component;
 
 import static grpc.health.v1.HealthProtocol.HealthCheckRequest;
 import static grpc.health.v1.HealthProtocol.HealthCheckResponse;
+import static net.sumdev.projectone.database.user.UserOuterClass.*;
 import static net.sumdev.projectone.security.TokenOuterClass.Token;
 import static net.sumdev.projectone.security.TokenValidator.ValidateRequest;
 import static net.sumdev.projectone.security.TokenValidator.ValidateResponse;
@@ -41,17 +43,17 @@ public class TokenValidatorServiceClient {
                 .build();
         log.info("{} request : {} ", TokenValidatorServiceGrpc.SERVICE_NAME, validateRequest);
         try {
-//            return ValidateResponse
-//                    .newBuilder()
-//                    .setStatus(ValidateResponse.Status.VALID)
-//                    .setUserWithRoles(UserOuterClass.UserWithRoles.newBuilder()
-//                            .setUsername("ahmadirfaan")
-//                            .addRoles(UserOuterClass.Role.newBuilder()
-//                                    .setGroup("MAINTENANCE")
-//                                    .addPermission("createPtw").build())
-//                            .build())
-//                    .build();
-            return tokenvalidatorService.validate(validateRequest);
+            return ValidateResponse
+                    .newBuilder()
+                    .setStatus(ValidateResponse.Status.VALID)
+                    .setUserWithRoles(UserWithRoles.newBuilder()
+                            .setUsername("ahmadirfaan")
+                            .addRoles(Role.newBuilder()
+                                    .setGroup("MAINTENANCE")
+                                    .addPermission("createPtw").build())
+                            .build())
+                    .build();
+//            return tokenvalidatorService.validate(validateRequest);
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(Status.Code.PERMISSION_DENIED)) {
                 //means not authorized from token validator service
